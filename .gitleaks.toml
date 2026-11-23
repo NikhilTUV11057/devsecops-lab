@@ -1,0 +1,18 @@
+# Extend the default gitleaks ruleset
+[extend]
+useDefault = true
+
+# The default aws-access-token rule allowlists AWS's published
+# documentation keys (anything ending in EXAMPLE). This lab plants exactly
+# that key, so this rule catches AWS-shaped keys with no allowlist.
+[[rules]]
+id = "aws-access-key-id-lab"
+description = "AWS access key ID (including documentation example keys)"
+regex = '''\b((?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b'''
+keywords = ["akia", "asia", "abia", "acca", "a3t"]
+
+[[rules]]
+id = "aws-secret-access-key-lab"
+description = "AWS secret access key assignment"
+regex = '''(?i)aws_?secret_?access_?key\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']'''
+keywords = ["aws_secret_access_key", "secret_access_key"]
