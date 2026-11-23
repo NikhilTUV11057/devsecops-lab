@@ -1,0 +1,66 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:          # NOT pull_request_target: fork PRs get no secrets and a read-only token
+
+# Least privilege: the GITHUB_TOKEN can only read repo contents.
+# Without this block the token can get write access to contents, PRs, issues, packages, etc.
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # GATE: a leaked secret fails the build
+  secrets:
+    name: secret-scan-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0              # gitleaks needs full history
+          persist-credentials: false  # don't leave the token in .git/config
+
+      - name: Secret scan (Gitleaks)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" zricethezav/gitleaks:v8.30.1 \
+            git /repo --config /repo/.gitleaks.toml --redact --verbose --exit-code 1
+
+  # GATE: injectable code path fails the build
+  sast:
+    name: sast-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: SAST (Semgrep)
+        run: |
+          pip install semgrep==1.186.0
+          semgrep scan --config auto --error
+
+  # REPORT: vulnerable dependencies are surfaced but do not block
+  deps:
+    name: dependency-scan-report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Dependency scan (Trivy)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" aquasec/trivy:0.76.2 \
+            fs --scanners vuln --exit-code 0 /repo
